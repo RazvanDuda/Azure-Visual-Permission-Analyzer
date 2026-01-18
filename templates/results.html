@@ -1,0 +1,1496 @@
+{% extends "base.html" %}
+
+{% block title %}Results - Azure Permission Analyzer{% endblock %}
+
+{% block extra_head %}
+<style>
+.result-card {
+    transition: transform 0.2s;
+}
+
+.result-card:hover {
+    transform: translateY(-2px);
+}
+
+.mermaid-container {
+    border: 1px solid #dee2e6;
+    border-radius: 0.375rem;
+    padding: 1rem;
+    background: #f8f9fa;
+    overflow: auto;
+    position: relative;
+    height: 70vh;
+}
+
+.diagram-wrapper {
+    transform-origin: 0 0;
+    transition: transform 0.2s ease;
+}
+
+.zoom-controls {
+    position: absolute;
+    top: 10px;
+    right: 10px;
+    z-index: 1000;
+    display: flex;
+    gap: 5px;
+}
+
+.zoom-btn {
+    width: 40px;
+    height: 40px;
+    border: none;
+    border-radius: 50%;
+    background: rgba(255, 255, 255, 0.9);
+    box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 18px;
+    color: #333;
+}
+
+.zoom-btn:hover {
+    background: rgba(255, 255, 255, 1);
+    box-shadow: 0 4px 8px rgba(0,0,0,0.15);
+}
+
+.scope-badge {
+    font-size: 0.8em;
+}
+
+/* Progress Steps Styling */
+.progress-step {
+    margin-bottom: 8px;
+    padding: 4px 0;
+    transition: all 0.3s ease;
+}
+
+.progress-step.active {
+    color: #198754 !important;
+    font-weight: 500;
+}
+
+.progress-step.active i {
+    color: #198754 !important;
+    animation: pulse 1.5s infinite;
+}
+
+.progress-step.completed {
+    color: #6c757d !important;
+}
+
+.progress-step.completed i {
+    color: #198754 !important;
+}
+
+@keyframes pulse {
+    0% { opacity: 1; }
+    50% { opacity: 0.5; }
+    100% { opacity: 1; }
+}
+
+/* Smooth progress bar transitions */
+#reportProgressBar {
+    transition: width 0.5s ease-in-out;
+}
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="container-fluid">
+    <!-- Header -->
+    <div class="row mb-4">
+        <div class="col">
+            <div class="d-flex justify-content-between align-items-center">
+                <div>
+                    <h1 class="display-5">
+                        <i class="fas fa-chart-bar text-primary me-3"></i>
+                        Analysis Results
+                    </h1>
+                    <p class="text-muted">View and download permission analysis results</p>
+                </div>
+                <div>
+                    {% if analyses %}
+                    <button class="btn btn-success me-2" onclick="generateComprehensiveReport()">
+                        <i class="fas fa-file-alt me-2"></i>Generate Report
+                    </button>
+                    <button class="btn btn-warning me-2" onclick="removeDuplicates()">
+                        <i class="fas fa-filter me-2"></i>Remove Duplicates
+                    </button>
+                    <button class="btn btn-outline-secondary" onclick="clearDemoData()">
+                        <i class="fas fa-trash me-2"></i>Clear Results
+                    </button>
+                    {% else %}
+                    <button class="btn btn-outline-info" onclick="loadDemoData()">
+                        <i class="fas fa-database me-2"></i>Load Demo Data
+                    </button>
+                    {% endif %}
+                    <a href="/" class="btn btn-primary">
+                        <i class="fas fa-plus me-2"></i>New Analysis
+                    </a>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    {% if not analyses %}
+    <!-- No Results -->
+    <div class="row">
+        <div class="col-lg-6 mx-auto text-center">
+            <div class="card border-0 shadow-sm">
+                <div class="card-body py-5">
+                    <i class="fas fa-chart-bar fa-4x text-muted mb-4"></i>
+                    <h4>No Analysis Results</h4>
+                    <p class="text-muted mb-4">Start your first permission analysis to see results here.</p>
+                    <a href="/" class="btn btn-primary">
+                        <i class="fas fa-play me-2"></i>Start Analysis
+                    </a>
+                </div>
+            </div>
+        </div>
+    </div>
+    {% else %}
+    <!-- Results Grid -->
+    <div class="row" id="resultsContainer">
+        {% for analysis in analyses %}
+        <div class="col-lg-6 xl-4 mb-4">
+            <div class="card result-card shadow-sm h-100">
+                <div class="card-header bg-gradient-primary text-white">
+                    <div class="d-flex justify-content-between align-items-center">
+                        <div>
+                            <h5 class="card-title mb-0">
+                                <i class="fas fa-user me-2"></i>
+                                {{ analysis.display_name }}
+                            </h5>
+                            <small>{{ analysis.user_principal_name }}</small>
+                        </div>
+                        <div class="dropdown">
+                            <button class="btn btn-sm btn-outline-light" type="button" data-bs-toggle="dropdown">
+                                <i class="fas fa-ellipsis-v"></i>
+                            </button>
+                            <ul class="dropdown-menu">
+                                <li>
+                                    <a class="dropdown-item" href="#" onclick="showDiagram('{{ analysis.analysis_key }}')">
+                                        <i class="fas fa-project-diagram me-2"></i>View Diagram
+                                    </a>
+                                </li>
+                                <li><hr class="dropdown-divider"></li>
+                                <li>
+                                    <a class="dropdown-item" href="/download/{{ analysis.analysis_key }}/json">
+                                        <i class="fas fa-file-code me-2"></i>Download JSON
+                                    </a>
+                                </li>
+                                <li><hr class="dropdown-divider"></li>
+                                <li>
+                                    <a class="dropdown-item text-danger" href="#" onclick="deleteResult('{{ analysis.analysis_key }}')">
+                                        <i class="fas fa-trash me-2"></i>Delete
+                                    </a>
+                                </li>
+                            </ul>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="card-body">
+                    <!-- Summary Stats -->
+                    <div class="row text-center mb-3">
+                        <div class="col-3">
+                            <div class="bg-light rounded p-2 border">
+                                <div class="fw-bold text-dark">{{ analysis.direct_assignments|length }}</div>
+                                <small class="text-muted">Direct</small>
+                            </div>
+                        </div>
+                        <div class="col-3">
+                            <div class="bg-light rounded p-2 border">
+                                <div class="fw-bold text-dark">{{ analysis.group_assignments|length }}</div>
+                                <small class="text-muted">Groups</small>
+                            </div>
+                        </div>
+                        <div class="col-3">
+                            <div class="bg-light rounded p-2 border">
+                                <div class="fw-bold text-dark">{{ analysis.key_vault_permissions|length }}</div>
+                                <small class="text-muted">Key Vaults</small>
+                            </div>
+                        </div>
+                        <div class="col-3">
+                            <div class="bg-light rounded p-2 border">
+                                <div class="fw-bold text-dark">{{ analysis.storage_account_permissions|length }}</div>
+                                <small class="text-muted">Storage</small>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Direct Assignments Preview -->
+                    {% if analysis.direct_assignments %}
+                    <div class="mb-3">
+                        <h6 class="fw-bold">
+                            <i class="fas fa-user-tag me-1"></i>Direct Assignments
+                        </h6>
+                        {% for assignment in analysis.direct_assignments[:3] %}
+                        <div class="d-flex justify-content-between align-items-center mb-1">
+                            <span class="text-truncate">{{ assignment.role_name }}</span>
+                            <span class="badge bg-primary scope-badge">{{ assignment.scope_type }}</span>
+                        </div>
+                        {% endfor %}
+                        {% if analysis.direct_assignments|length > 3 %}
+                        <small class="text-muted">
+                            ... and {{ analysis.direct_assignments|length - 3 }} more
+                        </small>
+                        {% endif %}
+                    </div>
+                    {% endif %}
+
+                    <!-- Group Assignments Preview -->
+                    {% if analysis.group_assignments %}
+                    <div class="mb-3">
+                        <h6 class="fw-bold">
+                            <i class="fas fa-users me-1"></i>Group Assignments
+                        </h6>
+                        {% for assignment in analysis.group_assignments[:3] %}
+                        <div class="mb-1">
+                            <div class="d-flex justify-content-between align-items-center">
+                                <span class="text-truncate">{{ assignment.role_name }}</span>
+                                <span class="badge bg-info scope-badge">{{ assignment.scope_type }}</span>
+                            </div>
+                            <small class="text-muted">
+                                via {{ assignment.group_name or 'Unknown Group' }}
+                            </small>
+                        </div>
+                        {% endfor %}
+                        {% if analysis.group_assignments|length > 3 %}
+                        <small class="text-muted">
+                            ... and {{ analysis.group_assignments|length - 3 }} more
+                        </small>
+                        {% endif %}
+                    </div>
+                    {% endif %}
+
+                    <!-- Analysis Info -->
+                    <div class="text-muted">
+                        <small>
+                            <i class="fas fa-clock me-1"></i>
+                            Analyzed: {{ analysis.analyzed_at.strftime('%Y-%m-%d %H:%M') }}
+                        </small>
+                    </div>
+                </div>
+
+                <div class="card-footer bg-transparent">
+                    <div class="d-grid gap-2 d-md-flex justify-content-md-end">
+                        <button class="btn btn-sm btn-outline-primary flex-fill" onclick="showDetails('{{ analysis.analysis_key }}')">
+                            <i class="fas fa-eye me-1"></i>Details
+                        </button>
+                        <button class="btn btn-sm btn-primary flex-fill" onclick="showDiagram('{{ analysis.analysis_key }}')">
+                            <i class="fas fa-project-diagram me-1"></i>Diagram
+                        </button>
+                    </div>
+                </div>
+            </div>
+        </div>
+        {% endfor %}
+    </div>
+    {% endif %}
+</div>
+
+<!-- Details Modal -->
+<div class="modal fade" id="detailsModal" tabindex="-1" aria-labelledby="detailsModalLabel" aria-hidden="true">
+    <div class="modal-dialog modal-xl">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title" id="detailsModalLabel">
+                    <i class="fas fa-user me-2"></i>Permission Details
+                </h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <div class="modal-body">
+                <div id="detailsContent">
+                    <div class="text-center">
+                        <i class="fas fa-spinner fa-spin fa-2x"></i>
+                        <p class="mt-2">Loading details...</p>
+                    </div>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Close</button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Diagram Modal -->
+<div class="modal fade" id="diagramModal" tabindex="-1" aria-labelledby="diagramModalLabel" aria-hidden="true">
+    <div class="modal-dialog modal-fullscreen">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title" id="diagramModalLabel">
+                    <i class="fas fa-project-diagram me-2"></i>Permission Diagram
+                </h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <div class="modal-body">
+                <div id="diagramContent">
+                    <div class="text-center">
+                        <i class="fas fa-spinner fa-spin fa-2x"></i>
+                        <p class="mt-2">Generating diagram...</p>
+                    </div>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-success" id="exportPngBtn" onclick="exportDiagramToPng()">
+                    <i class="fas fa-download me-2"></i>Export as PNG
+                </button>
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Close</button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Generate Report Modal -->
+<div class="modal fade" id="generateReportModal" tabindex="-1" aria-labelledby="generateReportModalLabel" aria-hidden="true">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header bg-success text-white">
+                <h5 class="modal-title" id="generateReportModalLabel">
+                    <i class="fas fa-file-alt me-2"></i>Generate Comprehensive Report
+                </h5>
+                <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <div class="modal-body">
+                <div class="alert alert-info mb-3">
+                    <i class="fas fa-info-circle me-2"></i>
+                    <strong>Report Generation:</strong> This will create a comprehensive HTML report containing all analyzed user permissions.
+                </div>
+                <p class="mb-3">Enter your organization name to customize the report header:</p>
+                
+                <div class="mb-3">
+                    <label for="organizationNameInput" class="form-label">
+                        <i class="fas fa-building me-1"></i>Organization Name
+                    </label>
+                    <input type="text" class="form-control" id="organizationNameInput" 
+                           placeholder="e.g., Acme Corporation" value="Organization"
+                           autocomplete="organization" maxlength="100"
+                           onkeypress="handleEnterKey(event)">
+                    <div class="form-text">
+                        This name will appear in the report header and title
+                    </div>
+                    <div class="invalid-feedback" id="organizationNameError"></div>
+                </div>
+                
+                <div class="alert alert-light border">
+                    <h6 class="alert-heading"><i class="fas fa-chart-bar me-1"></i>Report Contents:</h6>
+                    <ul class="mb-0 small">
+                        <li>Executive summary with key security metrics</li>
+                        <li>Individual user permission breakdowns</li>
+                        <li>Risk assessment and high-privilege user identification</li>
+                        <li>Interactive charts and navigation</li>
+                        <li>Security recommendations and compliance notes</li>
+                    </ul>
+                </div>
+
+                <!-- Progress Section (hidden by default) -->
+                <div id="reportProgressSection" class="mt-4" style="display: none;">
+                    <div class="border-top pt-3">
+                        <h6 class="mb-3">
+                            <i class="fas fa-cogs me-1"></i>
+                            <span id="progressTitle">Generating Report...</span>
+                        </h6>
+                        
+                        <!-- Progress Bar -->
+                        <div class="progress mb-3" style="height: 20px;">
+                            <div id="reportProgressBar" class="progress-bar progress-bar-striped progress-bar-animated bg-success" 
+                                 role="progressbar" style="width: 0%;" 
+                                 aria-valuenow="0" aria-valuemin="0" aria-valuemax="100">
+                                <span id="progressPercentage">0%</span>
+                            </div>
+                        </div>
+                        
+                        <!-- Progress Steps -->
+                        <div class="small text-muted">
+                            <div id="progressSteps">
+                                <div class="progress-step" data-step="1">
+                                    <i class="fas fa-circle me-1 text-muted"></i>
+                                    <span>Fetching analysis data...</span>
+                                </div>
+                                <div class="progress-step" data-step="2">
+                                    <i class="fas fa-circle me-1 text-muted"></i>
+                                    <span>Calculating security metrics...</span>
+                                </div>
+                                <div class="progress-step" data-step="3">
+                                    <i class="fas fa-circle me-1 text-muted"></i>
+                                    <span>Generating user details...</span>
+                                </div>
+                                <div class="progress-step" data-step="4">
+                                    <i class="fas fa-circle me-1 text-muted"></i>
+                                    <span>Creating risk assessments...</span>
+                                </div>
+                                <div class="progress-step" data-step="5">
+                                    <i class="fas fa-circle me-1 text-muted"></i>
+                                    <span>Building HTML report...</span>
+                                </div>
+                                <div class="progress-step" data-step="6">
+                                    <i class="fas fa-circle me-1 text-muted"></i>
+                                    <span>Preparing download...</span>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal" id="cancelReportBtn" onclick="handleReportCancel()">
+                    <i class="fas fa-times me-2"></i>Cancel
+                </button>
+                <button type="button" class="btn btn-success" id="generateReportBtn" onclick="startReportGeneration()">
+                    <i class="fas fa-download me-2"></i>Generate & Download
+                </button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Clear Results Confirmation Modal -->
+<div class="modal fade" id="clearResultsModal" tabindex="-1" aria-labelledby="clearResultsModalLabel" aria-hidden="true">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header bg-danger text-white">
+                <h5 class="modal-title" id="clearResultsModalLabel">
+                    <i class="fas fa-exclamation-triangle me-2"></i>Confirm Clear All Results
+                </h5>
+                <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <div class="modal-body">
+                <div class="alert alert-warning mb-3">
+                    <i class="fas fa-exclamation-circle me-2"></i>
+                    <strong>Warning:</strong> This action cannot be undone!
+                </div>
+                <p class="mb-3">Are you sure you want to permanently delete all analysis results?</p>
+                <ul class="mb-0">
+                    <li>All stored analysis results will be deleted</li>
+                    <li>This includes user permissions, role assignments, and access data</li>
+                    <li>You will need to run new analyses to generate data</li>
+                </ul>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">
+                    <i class="fas fa-times me-2"></i>Cancel
+                </button>
+                <button type="button" class="btn btn-danger" id="confirmClearBtn" onclick="confirmClearResults()">
+                    <i class="fas fa-trash me-2"></i>Delete All Results
+                </button>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_scripts %}
+<script>
+// Fix aria-hidden accessibility warning by managing focus properly
+document.addEventListener('DOMContentLoaded', function() {
+    // Get all modals
+    const modals = document.querySelectorAll('.modal');
+
+    modals.forEach(function(modal) {
+        // Before modal hides, blur any focused element inside it
+        modal.addEventListener('hide.bs.modal', function() {
+            const focusedElement = modal.querySelector(':focus');
+            if (focusedElement) {
+                focusedElement.blur();
+            }
+        });
+
+        // After modal is hidden, ensure aria-hidden is properly set
+        modal.addEventListener('hidden.bs.modal', function() {
+            modal.setAttribute('aria-hidden', 'true');
+        });
+
+        // When modal is shown, remove aria-hidden
+        modal.addEventListener('shown.bs.modal', function() {
+            modal.removeAttribute('aria-hidden');
+        });
+    });
+});
+
+async function showDetails(analysisId) {
+    const modal = new bootstrap.Modal(document.getElementById('detailsModal'));
+    const content = document.getElementById('detailsContent');
+
+    // Show loading
+    content.innerHTML = `
+        <div class="text-center">
+            <i class="fas fa-spinner fa-spin fa-2x"></i>
+            <p class="mt-2">Loading details...</p>
+        </div>
+    `;
+
+    modal.show();
+
+    try {
+        const response = await fetch(`/result/${analysisId}`);
+        const data = await response.json();
+
+        content.innerHTML = `
+            <div class="row">
+                <div class="col-md-6">
+                    <h6>User Information</h6>
+                    <table class="table table-sm">
+                        <tr><td><strong>Display Name:</strong></td><td>${data.display_name || 'N/A'}</td></tr>
+                        <tr><td><strong>Principal Name:</strong></td><td>${data.user_principal_name || 'N/A'}</td></tr>
+                        <tr><td><strong>User ID:</strong></td><td><code>${data.user_id || 'N/A'}</code></td></tr>
+                        <tr><td><strong>Subscription Name:</strong></td><td>${data.subscription_name || 'N/A'}</td></tr>
+                        <tr><td><strong>Subscription ID:</strong></td><td><code>${data.subscription_id || 'N/A'}</code></td></tr>
+                        <tr><td><strong>Analyzed:</strong></td><td>${data.analyzed_at ? new Date(data.analyzed_at).toLocaleString() : 'N/A'}</td></tr>
+                    </table>
+                </div>
+                <div class="col-md-6">
+                    <h6>Summary</h6>
+                    <table class="table table-sm">
+                        <tr><td><strong>Direct Assignments:</strong></td><td>${(data.direct_assignments || []).length}</td></tr>
+                        <tr><td><strong>Group Assignments:</strong></td><td>${(data.group_assignments || []).length}</td></tr>
+                        <tr><td><strong>Total Scopes:</strong></td><td>${data.all_permissions ? Object.keys(data.all_permissions).length : 0}</td></tr>
+                        <tr><td><strong>Key Vault Access:</strong></td><td>${(data.key_vault_permissions || []).length}</td></tr>
+                        <tr><td><strong>Storage Account Access:</strong></td><td>${(data.storage_account_permissions || []).length}</td></tr>
+                    </table>
+                </div>
+            </div>
+
+            <ul class="nav nav-tabs" id="detailTabs" role="tablist">
+                <li class="nav-item" role="presentation">
+                    <button class="nav-link active" id="direct-tab" data-bs-toggle="tab" data-bs-target="#direct" type="button">
+                        Direct Assignments (${(data.direct_assignments || []).length})
+                    </button>
+                </li>
+                <li class="nav-item" role="presentation">
+                    <button class="nav-link" id="group-tab" data-bs-toggle="tab" data-bs-target="#group" type="button">
+                        Group Assignments (${(data.group_assignments || []).length})
+                    </button>
+                </li>
+                <li class="nav-item" role="presentation">
+                    <button class="nav-link" id="permissions-tab" data-bs-toggle="tab" data-bs-target="#permissions" type="button">
+                        All Permissions
+                    </button>
+                </li>
+                <li class="nav-item" role="presentation">
+                    <button class="nav-link" id="keyvault-tab" data-bs-toggle="tab" data-bs-target="#keyvault" type="button">
+                        Key Vault Access (${(data.key_vault_permissions || []).length})
+                    </button>
+                </li>
+                <li class="nav-item" role="presentation">
+                    <button class="nav-link" id="storage-tab" data-bs-toggle="tab" data-bs-target="#storage" type="button">
+                        Storage Account Access (${(data.storage_account_permissions || []).length})
+                    </button>
+                </li>
+            </ul>
+
+            <div class="tab-content mt-3" id="detailTabContent">
+                <div class="tab-pane fade show active" id="direct" role="tabpanel">
+                    ${renderAssignments(data.direct_assignments || [], 'direct')}
+                </div>
+                <div class="tab-pane fade" id="group" role="tabpanel">
+                    ${renderAssignments(data.group_assignments || [], 'group')}
+                </div>
+                <div class="tab-pane fade" id="permissions" role="tabpanel">
+                    ${renderPermissions(data.all_permissions || {})}
+                </div>
+                <div class="tab-pane fade" id="keyvault" role="tabpanel">
+                    ${renderKeyVaultPermissions(data.key_vault_permissions || [])}
+                </div>
+                <div class="tab-pane fade" id="storage" role="tabpanel">
+                    ${renderStorageAccountPermissions(data.storage_account_permissions || [])}
+                </div>
+            </div>
+        `;
+
+    } catch (error) {
+        content.innerHTML = `
+            <div class="alert alert-danger">
+                <i class="fas fa-exclamation-triangle me-2"></i>
+                Error loading details: ${error.message}
+            </div>
+        `;
+    }
+}
+
+async function showDiagram(analysisId) {
+    const modal = new bootstrap.Modal(document.getElementById('diagramModal'));
+    const content = document.getElementById('diagramContent');
+
+    // Show loading
+    content.innerHTML = `
+        <div class="text-center">
+            <i class="fas fa-spinner fa-spin fa-2x"></i>
+            <p class="mt-2">Generating diagram...</p>
+        </div>
+    `;
+
+    modal.show();
+
+    try {
+        const response = await fetch(`/diagram/${analysisId}`);
+        const data = await response.json();
+
+        content.innerHTML = `
+            <div class="text-center mb-3">
+                <h5>${data.user_name} (${data.user_principal_name})</h5>
+            </div>
+            <div class="mermaid-container" id="mermaidContainer">
+                <div class="zoom-controls">
+                    <button class="zoom-btn" onclick="zoomIn()" title="Zoom In">+</button>
+                    <button class="zoom-btn" onclick="zoomOut()" title="Zoom Out">−</button>
+                    <button class="zoom-btn" onclick="resetZoom()" title="Reset Zoom">⌂</button>
+                </div>
+                <div class="diagram-wrapper" id="diagramWrapper">
+                    <div class="mermaid" id="diagramMermaid">
+                        ${data.mermaid_code}
+                    </div>
+                </div>
+            </div>
+        `;
+
+        // Store current analysis data for export
+        currentAnalysisData = data;
+
+        // Re-initialize Mermaid for the new content
+        mermaid.init(undefined, document.getElementById('diagramMermaid'));
+
+        // Reset zoom when showing new diagram
+        currentZoom = 1;
+        updateZoom();
+
+    } catch (error) {
+        content.innerHTML = `
+            <div class="alert alert-danger">
+                <i class="fas fa-exclamation-triangle me-2"></i>
+                Error generating diagram: ${error.message}
+            </div>
+        `;
+    }
+}
+
+async function deleteResult(analysisId) {
+    if (!confirm('Are you sure you want to delete this analysis result?')) {
+        return;
+    }
+
+    try {
+        const response = await fetch(`/result/${analysisId}`, { method: 'DELETE' });
+
+        if (response.ok) {
+            // Remove the card from the page
+            location.reload();
+        } else {
+            alert('Error deleting result');
+        }
+    } catch (error) {
+        alert('Error deleting result: ' + error.message);
+    }
+}
+
+function renderAssignments(assignments, type) {
+    if (!assignments || assignments.length === 0) {
+        return '<p class="text-muted">No assignments found.</p>';
+    }
+
+    let html = '<div class="table-responsive"><table class="table table-striped table-sm">';
+    html += '<thead><tr>';
+    html += '<th>Role</th><th>Scope Type</th><th>Scope</th>';
+    if (type === 'group') {
+        html += '<th>Group</th>';
+    }
+    html += '<th>Created</th></tr></thead><tbody>';
+
+    assignments.forEach(assignment => {
+        html += '<tr>';
+        html += `<td><strong>${assignment.role_name}</strong></td>`;
+        html += `<td><span class="badge bg-secondary">${assignment.scope_type}</span></td>`;
+        html += `<td class="text-truncate" style="max-width: 200px;" title="${assignment.scope}">`;
+        html += assignment.scope.split('/').pop() || assignment.scope;
+        html += '</td>';
+        if (type === 'group') {
+            html += `<td>${assignment.group_name || 'Unknown Group'}</td>`;
+        }
+        html += `<td>${assignment.created_on ? new Date(assignment.created_on).toLocaleDateString() : 'N/A'}</td>`;
+        html += '</tr>';
+    });
+
+    html += '</tbody></table></div>';
+    return html;
+}
+
+function renderPermissions(permissions) {
+    if (!permissions || Object.keys(permissions).length === 0) {
+        return '<p class="text-muted">No permissions found.</p>';
+    }
+
+    let html = '<div class="accordion" id="permissionsAccordion">';
+    let index = 0;
+
+    Object.entries(permissions).forEach(([scope, perms]) => {
+        const scopeName = scope.split('/').pop() || scope;
+        const scopeType = getScopeType(scope);
+
+        html += `
+            <div class="accordion-item">
+                <h2 class="accordion-header" id="heading${index}">
+                    <button class="accordion-button collapsed" type="button" data-bs-toggle="collapse"
+                            data-bs-target="#collapse${index}">
+                        <strong>${scopeName}</strong>
+                        <span class="badge bg-secondary ms-2">${scopeType}</span>
+                        <span class="badge bg-primary ms-1">${perms.length} permissions</span>
+                    </button>
+                </h2>
+                <div id="collapse${index}" class="accordion-collapse collapse" data-bs-parent="#permissionsAccordion">
+                    <div class="accordion-body">
+                        <small class="text-muted d-block mb-2">Scope: ${scope}</small>
+                        <div class="row">
+        `;
+
+        // Split permissions into columns
+        const chunked = chunkArray(perms, Math.ceil(perms.length / 3));
+        chunked.forEach(chunk => {
+            html += '<div class="col-md-4"><ul class="list-unstyled small">';
+            chunk.forEach(perm => {
+                html += `<li><code>${perm}</code></li>`;
+            });
+            html += '</ul></div>';
+        });
+
+        html += `
+                        </div>
+                    </div>
+                </div>
+            </div>
+        `;
+        index++;
+    });
+
+    html += '</div>';
+    return html;
+}
+
+function renderKeyVaultPermissions(keyVaultPermissions) {
+    if (!keyVaultPermissions || keyVaultPermissions.length === 0) {
+        return '<p class="text-muted">No Key Vault access found.</p>';
+    }
+
+    let html = '<div class="accordion" id="keyVaultAccordion">';
+
+    keyVaultPermissions.forEach((kv, index) => {
+        const accessPolicies = kv.access_policies || [];
+        const totalPolicies = accessPolicies.length;
+        let totalPermissions = 0;
+
+        // Count total permissions across all policies
+        accessPolicies.forEach(policy => {
+            const perms = policy.permissions || {};
+            totalPermissions += (perms.keys?.length || 0) + (perms.secrets?.length || 0) +
+                              (perms.certificates?.length || 0) + (perms.storage?.length || 0);
+        });
+
+        html += `
+            <div class="accordion-item">
+                <h2 class="accordion-header" id="kvHeading${index}">
+                    <button class="accordion-button collapsed" type="button" data-bs-toggle="collapse"
+                            data-bs-target="#kvCollapse${index}">
+                        <i class="fas fa-key me-2"></i>
+                        <strong>${kv.key_vault_name}</strong>
+                        <span class="badge bg-info ms-2">${kv.location}</span>
+                        <span class="badge bg-primary ms-1">${totalPolicies} policies</span>
+                        <span class="badge bg-success ms-1">${totalPermissions} permissions</span>
+                    </button>
+                </h2>
+                <div id="kvCollapse${index}" class="accordion-collapse collapse" data-bs-parent="#keyVaultAccordion">
+                    <div class="accordion-body">
+                        <div class="row mb-3">
+                            <div class="col-md-6">
+                                <small class="text-muted d-block"><strong>Subscription:</strong> ${kv.subscription_name || kv.subscription_id}</small>
+                                <small class="text-muted d-block"><strong>Resource Group:</strong> ${kv.resource_group}</small>
+                                <small class="text-muted d-block"><strong>Location:</strong> ${kv.location}</small>
+                            </div>
+                            <div class="col-md-6">
+                                <small class="text-muted d-block"><strong>Key Vault ID:</strong></small>
+                                <small class="text-muted">${kv.key_vault_id}</small>
+                            </div>
+                        </div>
+
+                        <h6>Access Policies (${totalPolicies})</h6>
+        `;
+
+        accessPolicies.forEach((policy, policyIndex) => {
+            const perms = policy.permissions || {};
+            html += `
+                <div class="card mb-2">
+                    <div class="card-header">
+                        <small><strong>Object ID:</strong> ${policy.object_id}</small>
+                        <small class="text-muted ms-2"><strong>Tenant:</strong> ${policy.tenant_id}</small>
+                    </div>
+                    <div class="card-body">
+                        <div class="row">
+            `;
+
+            // Render Keys permissions
+            if (perms.keys && perms.keys.length > 0) {
+                html += `
+                    <div class="col-md-3">
+                        <h6 class="text-primary"><i class="fas fa-key me-1"></i>Keys (${perms.keys.length})</h6>
+                        <ul class="list-unstyled small">
+                `;
+                perms.keys.forEach(key => {
+                    html += `<li><span class="badge bg-light text-dark">${key}</span></li>`;
+                });
+                html += '</ul></div>';
+            }
+
+            // Render Secrets permissions
+            if (perms.secrets && perms.secrets.length > 0) {
+                html += `
+                    <div class="col-md-3">
+                        <h6 class="text-warning"><i class="fas fa-user-secret me-1"></i>Secrets (${perms.secrets.length})</h6>
+                        <ul class="list-unstyled small">
+                `;
+                perms.secrets.forEach(secret => {
+                    html += `<li><span class="badge bg-light text-dark">${secret}</span></li>`;
+                });
+                html += '</ul></div>';
+            }
+
+            // Render Certificates permissions
+            if (perms.certificates && perms.certificates.length > 0) {
+                html += `
+                    <div class="col-md-3">
+                        <h6 class="text-success"><i class="fas fa-certificate me-1"></i>Certificates (${perms.certificates.length})</h6>
+                        <ul class="list-unstyled small">
+                `;
+                perms.certificates.forEach(cert => {
+                    html += `<li><span class="badge bg-light text-dark">${cert}</span></li>`;
+                });
+                html += '</ul></div>';
+            }
+
+            // Render Storage permissions
+            if (perms.storage && perms.storage.length > 0) {
+                html += `
+                    <div class="col-md-3">
+                        <h6 class="text-info"><i class="fas fa-database me-1"></i>Storage (${perms.storage.length})</h6>
+                        <ul class="list-unstyled small">
+                `;
+                perms.storage.forEach(storage => {
+                    html += `<li><span class="badge bg-light text-dark">${storage}</span></li>`;
+                });
+                html += '</ul></div>';
+            }
+
+            html += `
+                        </div>
+                    </div>
+                </div>
+            `;
+        });
+
+        html += `
+                    </div>
+                </div>
+            </div>
+        `;
+    });
+
+    html += '</div>';
+    return html;
+}
+
+function renderStorageAccountPermissions(storageAccountPermissions) {
+    if (!storageAccountPermissions || storageAccountPermissions.length === 0) {
+        return '<p class="text-muted">No Storage Account access found.</p>';
+    }
+
+    let html = '<div class="accordion" id="storageAccordion">';
+
+    storageAccountPermissions.forEach((sa, index) => {
+        const effectivePermissions = sa.effective_permissions || [];
+        const totalPermissions = effectivePermissions.length;
+        const canListKeys = sa.can_list_keys || false;
+        const canRegenerateKeys = sa.can_regenerate_keys || false;
+        const hasWriteAccess = effectivePermissions.some(p => p.toLowerCase().includes('write') || p.toLowerCase().includes('delete'));
+
+        html += `
+            <div class="accordion-item">
+                <h2 class="accordion-header" id="saHeading${index}">
+                    <button class="accordion-button collapsed" type="button" data-bs-toggle="collapse"
+                            data-bs-target="#saCollapse${index}">
+                        <i class="fas fa-database me-2"></i>
+                        <strong>${sa.storage_account_name}</strong>
+                        <span class="badge bg-info ms-2">${sa.location}</span>
+                        <span class="badge bg-primary ms-1">${totalPermissions} permissions</span>
+                        ${canListKeys ? '<span class="badge bg-danger ms-1">Can List Keys</span>' : ''}
+                        ${canRegenerateKeys ? '<span class="badge bg-danger ms-1">Can Regenerate Keys</span>' : ''}
+                        ${hasWriteAccess ? '<span class="badge bg-warning ms-1">Write Access</span>' : ''}
+                    </button>
+                </h2>
+                <div id="saCollapse${index}" class="accordion-collapse collapse" data-bs-parent="#storageAccordion">
+                    <div class="accordion-body">
+                        <div class="row mb-3">
+                            <div class="col-md-6">
+                                <small class="text-muted d-block"><strong>Subscription:</strong> ${sa.subscription_name || sa.subscription_id}</small>
+                                <small class="text-muted d-block"><strong>Resource Group:</strong> ${sa.resource_group}</small>
+                                <small class="text-muted d-block"><strong>Location:</strong> ${sa.location}</small>
+                            </div>
+                            <div class="col-md-6">
+                                <small class="text-muted d-block"><strong>SKU:</strong> ${sa.sku || 'N/A'}</small>
+                                <small class="text-muted d-block"><strong>Kind:</strong> ${sa.kind || 'N/A'}</small>
+                                <small class="text-muted d-block"><strong>Security Level:</strong> ${sa.security_level || 'N/A'}</small>
+                            </div>
+                        </div>
+
+                        <h6>Permissions (${totalPermissions})</h6>
+                        <div class="row">
+        `;
+
+        // Group permissions by type for better display
+        const permissions = effectivePermissions; // Use the effective_permissions array
+        const keyPermissions = permissions.filter(p => p.toLowerCase().includes('list') && p.toLowerCase().includes('key'));
+        const readPermissions = permissions.filter(p => p.toLowerCase().includes('read'));
+        const writePermissions = permissions.filter(p => p.toLowerCase().includes('write') || p.toLowerCase().includes('delete'));
+        const otherPermissions = permissions.filter(p => 
+            !keyPermissions.includes(p) && !readPermissions.includes(p) && !writePermissions.includes(p)
+        );
+
+        // Render Key Access permissions (most critical)
+        if (canListKeys || canRegenerateKeys) {
+            html += `
+                <div class="col-md-6 mb-3">
+                    <h6 class="text-danger"><i class="fas fa-key me-1"></i>Critical Permissions</h6>
+                    <ul class="list-unstyled small">
+            `;
+            if (canListKeys) {
+                html += `<li><span class="badge bg-danger">Can List Storage Keys</span></li>`;
+            }
+            if (canRegenerateKeys) {
+                html += `<li><span class="badge bg-danger">Can Regenerate Storage Keys</span></li>`;
+            }
+            html += '</ul></div>';
+        }
+
+        // Render Write/Delete permissions
+        if (writePermissions.length > 0) {
+            html += `
+                <div class="col-md-6 mb-3">
+                    <h6 class="text-warning"><i class="fas fa-edit me-1"></i>Write/Delete (${writePermissions.length})</h6>
+                    <ul class="list-unstyled small">
+            `;
+            writePermissions.forEach(perm => {
+                html += `<li><span class="badge bg-warning text-dark">${perm}</span></li>`;
+            });
+            html += '</ul></div>';
+        }
+
+        // Render Read permissions
+        if (readPermissions.length > 0) {
+            html += `
+                <div class="col-md-6 mb-3">
+                    <h6 class="text-success"><i class="fas fa-eye me-1"></i>Read (${readPermissions.length})</h6>
+                    <ul class="list-unstyled small">
+            `;
+            readPermissions.forEach(perm => {
+                html += `<li><span class="badge bg-success">${perm}</span></li>`;
+            });
+            html += '</ul></div>';
+        }
+
+        // Render Other permissions
+        if (otherPermissions.length > 0) {
+            html += `
+                <div class="col-md-6 mb-3">
+                    <h6 class="text-info"><i class="fas fa-cog me-1"></i>Other (${otherPermissions.length})</h6>
+                    <ul class="list-unstyled small">
+            `;
+            otherPermissions.forEach(perm => {
+                html += `<li><span class="badge bg-info">${perm}</span></li>`;
+            });
+            html += '</ul></div>';
+        }
+
+        html += `
+                        </div>
+                    </div>
+                </div>
+            </div>
+        `;
+    });
+
+    html += '</div>';
+    return html;
+}
+
+function getScopeType(scope) {
+    if (scope === '/') return 'Root';
+    if (scope.includes('/subscriptions/') && !scope.includes('/resourceGroups/')) return 'Subscription';
+    if (scope.includes('/resourceGroups/')) return 'Resource Group';
+    if (scope.includes('/managementGroups/')) return 'Management Group';
+    return 'Resource';
+}
+
+function chunkArray(array, chunkSize) {
+    const chunks = [];
+    for (let i = 0; i < array.length; i += chunkSize) {
+        chunks.push(array.slice(i, i + chunkSize));
+    }
+    return chunks;
+}
+
+async function loadDemoData() {
+    try {
+        const response = await fetch('/api/demo/load', {
+            method: 'POST'
+        });
+
+        const result = await response.json();
+
+        if (response.ok) {
+            AzurePermissionAnalyzer.showToast(`${result.message}. Refreshing page...`, 'success');
+            setTimeout(() => location.reload(), 1500);
+        } else {
+            AzurePermissionAnalyzer.showToast(result.detail || 'Failed to load demo data', 'error');
+        }
+    } catch (error) {
+        AzurePermissionAnalyzer.showToast('Error loading demo data: ' + error.message, 'error');
+    }
+}
+
+async function clearDemoData() {
+    // Show the confirmation modal instead of browser confirm
+    const modal = new bootstrap.Modal(document.getElementById('clearResultsModal'));
+    modal.show();
+}
+
+async function confirmClearResults() {
+    // Close the modal
+    const modal = bootstrap.Modal.getInstance(document.getElementById('clearResultsModal'));
+    modal.hide();
+
+    // Disable the button during the operation
+    const confirmBtn = document.getElementById('confirmClearBtn');
+    const originalContent = confirmBtn.innerHTML;
+    confirmBtn.disabled = true;
+    confirmBtn.innerHTML = '<i class="fas fa-spinner fa-spin me-2"></i>Deleting...';
+
+    try {
+        const response = await fetch('/api/demo/clear', {
+            method: 'DELETE'
+        });
+
+        const result = await response.json();
+
+        if (response.ok) {
+            AzurePermissionAnalyzer.showToast(`${result.message}. Refreshing page...`, 'success');
+            setTimeout(() => location.reload(), 1500);
+        } else {
+            AzurePermissionAnalyzer.showToast(result.detail || 'Failed to clear data', 'error');
+            confirmBtn.disabled = false;
+            confirmBtn.innerHTML = originalContent;
+        }
+    } catch (error) {
+        AzurePermissionAnalyzer.showToast('Error clearing data: ' + error.message, 'error');
+        confirmBtn.disabled = false;
+        confirmBtn.innerHTML = originalContent;
+    }
+}
+
+async function removeDuplicates() {
+    if (!confirm('Remove duplicate user analyses? This will keep only the most recent scan for each user.')) {
+        return;
+    }
+
+    try {
+        const response = await fetch('/api/results/remove-duplicates', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' }
+        });
+
+        const result = await response.json();
+
+        if (response.ok) {
+            AzurePermissionAnalyzer.showToast(
+                `${result.message}. Refreshing...`,
+                'success'
+            );
+            setTimeout(() => location.reload(), 1500);
+        } else {
+            AzurePermissionAnalyzer.showToast(
+                result.detail || 'Failed to remove duplicates',
+                'error'
+            );
+        }
+    } catch (error) {
+        AzurePermissionAnalyzer.showToast(
+            'Error removing duplicates: ' + error.message,
+            'error'
+        );
+    }
+}
+
+// Zoom functionality for diagram
+let currentZoom = 1;
+const minZoom = 0.1;
+const maxZoom = 3;
+const zoomStep = 0.2;
+
+function zoomIn() {
+    if (currentZoom < maxZoom) {
+        currentZoom = Math.min(maxZoom, currentZoom + zoomStep);
+        updateZoom();
+    }
+}
+
+function zoomOut() {
+    if (currentZoom > minZoom) {
+        currentZoom = Math.max(minZoom, currentZoom - zoomStep);
+        updateZoom();
+    }
+}
+
+function resetZoom() {
+    currentZoom = 1;
+    updateZoom();
+}
+
+function updateZoom() {
+    const wrapper = document.getElementById('diagramWrapper');
+    if (wrapper) {
+        wrapper.style.transform = `scale(${currentZoom})`;
+    }
+}
+
+let currentAnalysisData = null;
+
+function exportDiagramToPng() {
+    const diagramElement = document.getElementById('diagramMermaid');
+    if (!diagramElement || !currentAnalysisData) {
+        alert('No diagram available to export');
+        return;
+    }
+
+    // Create a temporary container with white background for better PNG export
+    const exportContainer = document.createElement('div');
+    exportContainer.style.position = 'absolute';
+    exportContainer.style.left = '-9999px';
+    exportContainer.style.top = '-9999px';
+    exportContainer.style.background = 'white';
+    exportContainer.style.padding = '40px';
+    exportContainer.style.minWidth = '1200px'; // Ensure minimum width
+    exportContainer.style.maxWidth = '2400px'; // Set maximum width
+    exportContainer.style.fontSize = '16px'; // Ensure readable font size
+
+    // Add title with larger font
+    const title = document.createElement('h2');
+    title.textContent = `${currentAnalysisData.user_name} - Permission Diagram`;
+    title.style.textAlign = 'center';
+    title.style.marginBottom = '30px';
+    title.style.color = '#333';
+    title.style.fontSize = '24px';
+    title.style.fontWeight = 'bold';
+    exportContainer.appendChild(title);
+
+    // Clone the diagram container instead of just the mermaid element
+    const diagramWrapper = document.getElementById('diagramWrapper');
+    const diagramClone = diagramWrapper ? diagramWrapper.cloneNode(true) : diagramElement.cloneNode(true);
+
+    // Reset any zoom transforms and set explicit sizing
+    diagramClone.style.transform = 'none';
+    diagramClone.style.width = 'auto';
+    diagramClone.style.height = 'auto';
+    diagramClone.style.minWidth = '1000px';
+
+    // Find the SVG element and set explicit dimensions
+    const svgElement = diagramClone.querySelector('svg');
+    if (svgElement) {
+        svgElement.style.width = 'auto';
+        svgElement.style.height = 'auto';
+        svgElement.style.maxWidth = 'none';
+        svgElement.style.maxHeight = 'none';
+
+        // Get the viewBox and set appropriate width/height
+        const viewBox = svgElement.getAttribute('viewBox');
+        if (viewBox) {
+            const [x, y, width, height] = viewBox.split(' ').map(Number);
+            const aspectRatio = width / height;
+            const targetWidth = Math.max(1000, width);
+            const targetHeight = targetWidth / aspectRatio;
+
+            svgElement.setAttribute('width', targetWidth);
+            svgElement.setAttribute('height', targetHeight);
+        }
+    }
+
+    exportContainer.appendChild(diagramClone);
+    document.body.appendChild(exportContainer);
+
+    // Use html2canvas with higher quality settings
+    html2canvas(exportContainer, {
+        backgroundColor: 'white',
+        scale: 3, // Higher resolution for better quality
+        useCORS: true,
+        allowTaint: true,
+        width: exportContainer.scrollWidth,
+        height: exportContainer.scrollHeight,
+        windowWidth: Math.max(exportContainer.scrollWidth, 1200),
+        windowHeight: Math.max(exportContainer.scrollHeight, 800)
+    }).then(canvas => {
+        // Remove temporary container
+        document.body.removeChild(exportContainer);
+
+        // Create download link
+        const link = document.createElement('a');
+        link.download = `${currentAnalysisData.user_principal_name}-permissions-diagram.png`;
+        link.href = canvas.toDataURL('image/png', 1.0); // Maximum quality
+
+        // Trigger download
+        document.body.appendChild(link);
+        link.click();
+        document.body.removeChild(link);
+
+        // Show success message
+        const toast = document.createElement('div');
+        toast.className = 'alert alert-success position-fixed';
+        toast.style.top = '20px';
+        toast.style.right = '20px';
+        toast.style.zIndex = '9999';
+        toast.innerHTML = '<i class="fas fa-check-circle me-2"></i>Diagram exported successfully!';
+        document.body.appendChild(toast);
+
+        setTimeout(() => {
+            if (document.body.contains(toast)) {
+                document.body.removeChild(toast);
+            }
+        }, 3000);
+
+    }).catch(error => {
+        // Remove temporary container on error
+        if (document.body.contains(exportContainer)) {
+            document.body.removeChild(exportContainer);
+        }
+        console.error('Error exporting diagram:', error);
+        alert('Error exporting diagram. Please try again.');
+    });
+}
+
+function generateComprehensiveReport() {
+    // Show the modal instead of using browser prompt
+    const modal = new bootstrap.Modal(document.getElementById('generateReportModal'));
+    
+    // Reset form state
+    const input = document.getElementById('organizationNameInput');
+    const errorDiv = document.getElementById('organizationNameError');
+    const progressSection = document.getElementById('reportProgressSection');
+    const generateBtn = document.getElementById('generateReportBtn');
+    
+    input.classList.remove('is-invalid');
+    errorDiv.textContent = '';
+    progressSection.style.display = 'none';
+    generateBtn.disabled = false;
+    generateBtn.innerHTML = '<i class="fas fa-download me-2"></i>Generate & Download';
+    
+    // Reset progress
+    resetProgress();
+    
+    // Focus on input when modal shows
+    document.getElementById('generateReportModal').addEventListener('shown.bs.modal', function() {
+        input.select(); // Select all text for easy replacement
+    }, { once: true });
+    
+    modal.show();
+}
+
+function resetProgress() {
+    // Reset progress bar
+    const progressBar = document.getElementById('reportProgressBar');
+    const progressPercentage = document.getElementById('progressPercentage');
+    progressBar.style.width = '0%';
+    progressBar.setAttribute('aria-valuenow', '0');
+    progressPercentage.textContent = '0%';
+    
+    // Reset all progress steps
+    const progressSteps = document.querySelectorAll('.progress-step');
+    progressSteps.forEach(step => {
+        step.classList.remove('active', 'completed');
+        const icon = step.querySelector('i');
+        icon.className = 'fas fa-circle me-1 text-muted';
+    });
+}
+
+function updateProgress(step, percentage, title) {
+    const progressBar = document.getElementById('reportProgressBar');
+    const progressPercentage = document.getElementById('progressPercentage');
+    const progressTitle = document.getElementById('progressTitle');
+    const progressSteps = document.querySelectorAll('.progress-step');
+    
+    // Update progress bar
+    progressBar.style.width = percentage + '%';
+    progressBar.setAttribute('aria-valuenow', percentage);
+    progressPercentage.textContent = percentage + '%';
+    
+    // Update title if provided
+    if (title) {
+        progressTitle.textContent = title;
+    }
+    
+    // Update progress steps
+    progressSteps.forEach((stepElement, index) => {
+        const stepNumber = index + 1;
+        const icon = stepElement.querySelector('i');
+        
+        if (stepNumber < step) {
+            // Completed step
+            stepElement.classList.remove('active');
+            stepElement.classList.add('completed');
+            icon.className = 'fas fa-check-circle me-1 text-success';
+        } else if (stepNumber === step) {
+            // Current active step
+            stepElement.classList.remove('completed');
+            stepElement.classList.add('active');
+            icon.className = 'fas fa-spinner fa-spin me-1 text-success';
+        } else {
+            // Future step
+            stepElement.classList.remove('active', 'completed');
+            icon.className = 'fas fa-circle me-1 text-muted';
+        }
+    });
+}
+
+async function simulateProgress() {
+    const steps = [
+        { step: 1, percentage: 15, delay: 200 },
+        { step: 2, percentage: 30, delay: 300 },
+        { step: 3, percentage: 50, delay: 400 },
+        { step: 4, percentage: 70, delay: 300 },
+        { step: 5, percentage: 90, delay: 500 },
+        { step: 6, percentage: 95, delay: 200 }
+    ];
+    
+    for (const { step, percentage, delay } of steps) {
+        updateProgress(step, percentage);
+        await new Promise(resolve => setTimeout(resolve, delay));
+    }
+}
+
+function handleEnterKey(event) {
+    if (event.key === 'Enter') {
+        event.preventDefault();
+        startReportGeneration();
+    }
+}
+
+async function startReportGeneration() {
+    const generateBtn = document.getElementById('generateReportBtn');
+    const originalContent = generateBtn.innerHTML;
+    const modal = bootstrap.Modal.getInstance(document.getElementById('generateReportModal'));
+    
+    // Get organization name from input
+    const organizationNameInput = document.getElementById('organizationNameInput');
+    const organizationNameError = document.getElementById('organizationNameError');
+    const organizationName = organizationNameInput.value.trim() || 'Organization';
+    
+    // Reset validation state
+    organizationNameInput.classList.remove('is-invalid');
+    organizationNameError.textContent = '';
+    
+    // Validate input
+    if (organizationName.length === 0) {
+        organizationNameInput.classList.add('is-invalid');
+        organizationNameError.textContent = 'Organization name cannot be empty';
+        organizationNameInput.focus();
+        return;
+    }
+    
+    if (organizationName.length > 100) {
+        organizationNameInput.classList.add('is-invalid');
+        organizationNameError.textContent = 'Organization name is too long (max 100 characters)';
+        organizationNameInput.focus();
+        return;
+    }
+    
+    // Show progress section and hide generate button
+    const progressSection = document.getElementById('reportProgressSection');
+    const cancelBtn = document.getElementById('cancelReportBtn');
+    
+    progressSection.style.display = 'block';
+    generateBtn.style.display = 'none';
+    cancelBtn.innerHTML = '<i class="fas fa-times me-2"></i>Cancel';
+    
+    try {
+        // Start progress simulation
+        const progressPromise = simulateProgress();
+        
+        // Generate the report
+        const response = await fetch(`/api/report/generate?organization_name=${encodeURIComponent(organizationName)}`);
+        
+        // Wait for progress to complete
+        await progressPromise;
+        
+        if (response.ok) {
+            // Complete final step
+            updateProgress(6, 100, 'Report Ready!');
+            
+            // Get the filename from response headers
+            const contentDisposition = response.headers.get('content-disposition');
+            let filename = 'azure_permissions_report.html';
+            if (contentDisposition) {
+                const filenameMatch = contentDisposition.match(/filename="?(.+)"?/);
+                if (filenameMatch) {
+                    filename = filenameMatch[1];
+                }
+            }
+            
+            // Small delay to show completion
+            await new Promise(resolve => setTimeout(resolve, 300));
+            
+            // Download the file
+            const blob = await response.blob();
+            const url = window.URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.style.display = 'none';
+            a.href = url;
+            a.download = filename;
+            document.body.appendChild(a);
+            a.click();
+            window.URL.revokeObjectURL(url);
+            document.body.removeChild(a);
+            
+            // Show completion and close modal
+            updateProgress(6, 100, 'Download Started!');
+            await new Promise(resolve => setTimeout(resolve, 500));
+            
+            modal.hide();
+            AzurePermissionAnalyzer.showToast(`Comprehensive report for "${organizationName}" generated successfully!`, 'success');
+            
+        } else {
+            const errorData = await response.json();
+            AzurePermissionAnalyzer.showToast(errorData.detail || 'Failed to generate report', 'error');
+        }
+        
+    } catch (error) {
+        AzurePermissionAnalyzer.showToast('Error generating report: ' + error.message, 'error');
+    } finally {
+        // Restore button state
+        progressSection.style.display = 'none';
+        generateBtn.style.display = 'inline-block';
+        generateBtn.disabled = false;
+        generateBtn.innerHTML = originalContent;
+        cancelBtn.innerHTML = '<i class="fas fa-times me-2"></i>Cancel';
+    }
+}
+
+function handleReportCancel() {
+    // Reset the modal state when cancelling
+    const progressSection = document.getElementById('reportProgressSection');
+    const generateBtn = document.getElementById('generateReportBtn');
+    const originalContent = '<i class="fas fa-download me-2"></i>Generate & Download';
+    
+    progressSection.style.display = 'none';
+    generateBtn.style.display = 'inline-block';
+    generateBtn.disabled = false;
+    generateBtn.innerHTML = originalContent;
+}
+
+</script>
+{% endblock %}

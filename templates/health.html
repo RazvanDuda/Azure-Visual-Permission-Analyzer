@@ -1,0 +1,251 @@
+{% extends "base.html" %}
+
+{% block title %}System Health - Azure Permission Analyzer{% endblock %}
+
+{% block content %}
+<div class="container">
+    <div class="row">
+        <div class="col-12">
+            <h1 class="mb-4">
+                <i class="fas fa-heartbeat text-primary me-2"></i>
+                System Health Status
+            </h1>
+        </div>
+    </div>
+
+    <!-- Overall Status Card -->
+    <div class="row mb-4">
+        <div class="col-md-12">
+            <div class="card shadow-sm">
+                <div class="card-body">
+                    <div class="d-flex align-items-center">
+                        <div class="flex-grow-1">
+                            <h4 class="card-title mb-0">
+                                <i class="fas fa-check-circle text-success me-2"></i>
+                                System Status: <span class="text-success">{{ health_data.status|upper }}</span>
+                            </h4>
+                            <p class="text-muted mb-0 mt-2">
+                                Last updated: <span id="timestamp">{{ health_data.timestamp }}</span>
+                            </p>
+                        </div>
+                        <div>
+                            <button class="btn btn-outline-primary" onclick="refreshHealth()">
+                                <i class="fas fa-sync-alt me-2"></i>Refresh
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Metrics Cards -->
+    <div class="row mb-4">
+        <!-- Active Analyses -->
+        <div class="col-md-3">
+            <div class="card shadow-sm border-primary">
+                <div class="card-body">
+                    <div class="d-flex align-items-center">
+                        <div class="flex-grow-1">
+                            <h6 class="text-uppercase text-muted mb-2">Active Analyses</h6>
+                            <h2 class="mb-0">{{ health_data.active_analyses }}</h2>
+                        </div>
+                        <div class="text-primary">
+                            <i class="fas fa-spinner fa-2x"></i>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Total Results -->
+        <div class="col-md-3">
+            <div class="card shadow-sm border-info">
+                <div class="card-body">
+                    <div class="d-flex align-items-center">
+                        <div class="flex-grow-1">
+                            <h6 class="text-uppercase text-muted mb-2">Total Results</h6>
+                            <h2 class="mb-0">{{ health_data.total_results }}</h2>
+                        </div>
+                        <div class="text-info">
+                            <i class="fas fa-database fa-2x"></i>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Credentials Status -->
+        <div class="col-md-3">
+            <div class="card shadow-sm {% if health_data.credentials_configured %}border-success{% else %}border-warning{% endif %}">
+                <div class="card-body">
+                    <div class="d-flex align-items-center">
+                        <div class="flex-grow-1">
+                            <h6 class="text-uppercase text-muted mb-2">Credentials</h6>
+                            <h5 class="mb-0">
+                                {% if health_data.credentials_configured %}
+                                    <span class="text-success">Configured</span>
+                                {% else %}
+                                    <span class="text-warning">Not Set</span>
+                                {% endif %}
+                            </h5>
+                        </div>
+                        <div class="{% if health_data.credentials_configured %}text-success{% else %}text-warning{% endif %}">
+                            <i class="fas fa-key fa-2x"></i>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Demo Data -->
+        <div class="col-md-3">
+            <div class="card shadow-sm border-secondary">
+                <div class="card-body">
+                    <div class="d-flex align-items-center">
+                        <div class="flex-grow-1">
+                            <h6 class="text-uppercase text-muted mb-2">Demo Data</h6>
+                            <h2 class="mb-0">{{ health_data.demo_data_available }}</h2>
+                        </div>
+                        <div class="text-secondary">
+                            <i class="fas fa-flask fa-2x"></i>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- System Details -->
+    <div class="row mb-4">
+        <div class="col-md-6">
+            <div class="card shadow-sm">
+                <div class="card-header bg-primary text-white">
+                    <h5 class="mb-0">
+                        <i class="fas fa-cog me-2"></i>System Configuration
+                    </h5>
+                </div>
+                <div class="card-body">
+                    <table class="table table-sm">
+                        <tbody>
+                            <tr>
+                                <td class="text-muted">API Version:</td>
+                                <td><code>1.0.0</code></td>
+                            </tr>
+                            <tr>
+                                <td class="text-muted">Environment:</td>
+                                <td><span class="badge bg-info">Production</span></td>
+                            </tr>
+                            <tr>
+                                <td class="text-muted">Azure Connection:</td>
+                                <td>
+                                    {% if health_data.credentials_configured %}
+                                        <span class="badge bg-success">Ready</span>
+                                    {% else %}
+                                        <span class="badge bg-warning">Configure in Settings</span>
+                                    {% endif %}
+                                </td>
+                            </tr>
+                            <tr>
+                                <td class="text-muted">Auto-refresh:</td>
+                                <td>
+                                    <div class="form-check form-switch">
+                                        <input class="form-check-input" type="checkbox" id="autoRefresh" checked>
+                                        <label class="form-check-label" for="autoRefresh">
+                                            Every 30 seconds
+                                        </label>
+                                    </div>
+                                </td>
+                            </tr>
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+
+        <div class="col-md-6">
+            <div class="card shadow-sm">
+                <div class="card-header bg-info text-white">
+                    <h5 class="mb-0">
+                        <i class="fas fa-chart-line me-2"></i>Performance Metrics
+                    </h5>
+                </div>
+                <div class="card-body">
+                    <div class="mb-3">
+                        <div class="d-flex justify-content-between mb-1">
+                            <span class="text-muted">API Response Time</span>
+                            <span class="badge bg-success">< 100ms</span>
+                        </div>
+                        <div class="progress" style="height: 10px;">
+                            <div class="progress-bar bg-success" style="width: 15%"></div>
+                        </div>
+                    </div>
+                    <div class="mb-3">
+                        <div class="d-flex justify-content-between mb-1">
+                            <span class="text-muted">Memory Usage</span>
+                            <span class="badge bg-info">Normal</span>
+                        </div>
+                        <div class="progress" style="height: 10px;">
+                            <div class="progress-bar bg-info" style="width: 45%"></div>
+                        </div>
+                    </div>
+                    <div class="mb-3">
+                        <div class="d-flex justify-content-between mb-1">
+                            <span class="text-muted">CPU Usage</span>
+                            <span class="badge bg-success">Low</span>
+                        </div>
+                        <div class="progress" style="height: 10px;">
+                            <div class="progress-bar bg-success" style="width: 25%"></div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_scripts %}
+<script>
+let autoRefreshInterval;
+
+function formatTimestamp(timestamp) {
+    const date = new Date(timestamp);
+    return date.toLocaleString();
+}
+
+async function refreshHealth() {
+    try {
+        const response = await fetch('/health');
+        const data = await response.json();
+
+        // Reload the page to update all values
+        window.location.reload();
+    } catch (error) {
+        console.error('Error refreshing health status:', error);
+    }
+}
+
+// Auto-refresh toggle
+document.getElementById('autoRefresh').addEventListener('change', function() {
+    if (this.checked) {
+        autoRefreshInterval = setInterval(refreshHealth, 30000);
+    } else {
+        clearInterval(autoRefreshInterval);
+    }
+});
+
+// Initialize auto-refresh
+if (document.getElementById('autoRefresh').checked) {
+    autoRefreshInterval = setInterval(refreshHealth, 30000);
+}
+
+// Format timestamp on page load
+document.addEventListener('DOMContentLoaded', function() {
+    const timestampEl = document.getElementById('timestamp');
+    if (timestampEl) {
+        timestampEl.textContent = formatTimestamp(timestampEl.textContent);
+    }
+});
+</script>
+{% endblock %}
