@@ -23,11 +23,7 @@ This application provides a FastAPI-based web interface for analyzing user permi
 
 ## Visual Diagrams
 
-<div align="center">
-  <video src="https://github.com/RazvanDuda/Azure-Visual-Permission-Analyzer/blob/main/video.webm" width="800" controls>
-    Your browser does not support the video tag.
-  </video>
-</div>
+![Demo](/video.gif)
 
 The application generates interactive visual permission diagrams using Mermaid.js:
 
